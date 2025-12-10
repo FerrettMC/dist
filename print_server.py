@@ -1,4 +1,5 @@
 from flask import Flask, request
+from waitress import serve
 from flask_cors import CORS
 import win32print
 import win32ui
@@ -20,49 +21,63 @@ CORS(app)  # allow all origins, including your website
 #     return {"status": "ok"}
 
 
-
-
-
 @app.post("/print")
 def print_ticket():
-    text = request.json.get("text", "NO TEXT RECEIVED")
+    try:
+        text = request.json.get("text", "NO TEXT RECEIVED")
 
-    printer_name = win32print.GetDefaultPrinter()
+        # Validate input
+        if not text.strip():
+            return {"status": "error", "message": "Empty text received"}, 400
 
-    # Create a device context for the printer
-    hDC = win32ui.CreateDC()
-    hDC.CreatePrinterDC(printer_name)
-    hDC.StartDoc("Deli Ticket")
-    hDC.StartPage()
+        printer_name = win32print.GetDefaultPrinter()
+        if not printer_name:
+            return {"status": "error", "message": "No default printer found"}, 500
 
-    # --- Create a huge font ---
-    huge_font = win32ui.CreateFont({
-        "name": "Arial",  # choose a font
-        "height": 400,    # very large text
-        "weight": 700,    # bold
-    })
-    hDC.SelectObject(huge_font)
+        # Create a device context for the printer
+        hDC = win32ui.CreateDC()
+        hDC.CreatePrinterDC(printer_name)
 
-    # --- Center the text on the page ---
-    page_width = hDC.GetDeviceCaps(win32con.HORZRES)
-    page_height = hDC.GetDeviceCaps(win32con.VERTRES)
+        try:
+            hDC.StartDoc("Deli Ticket")
+            hDC.StartPage()
 
-    # If multiple lines, print each line centered vertically with spacing
-    lines = text.splitlines()
-    total_height = len(lines) * 400  # roughly line height = font height
-    start_y = (page_height - total_height) // 2
+            # --- Create a huge font ---
+            huge_font = win32ui.CreateFont({
+                "name": "Arial",
+                "height": 800,   # very large text
+                "weight": 700,   # bold
+            })
+            hDC.SelectObject(huge_font)
 
-    for i, line in enumerate(lines):
-        line_width, line_height = hDC.GetTextExtent(line)
-        x = (page_width - line_width) // 2
-        y = start_y + i * 400
-        hDC.TextOut(x, y, line)
+            # --- Center the text on the page ---
+            page_width = hDC.GetDeviceCaps(win32con.HORZRES)
+            page_height = hDC.GetDeviceCaps(win32con.VERTRES)
 
-    hDC.EndPage()
-    hDC.EndDoc()
-    hDC.DeleteDC()
+            lines = text.splitlines()
+            total_height = len(lines) * 800
+            start_y = (page_height - total_height) // 2
 
-    return {"status": "printed"}
+            for i, line in enumerate(lines):
+                line_width, line_height = hDC.GetTextExtent(line)
+                x = (page_width - line_width) // 2
+                y = start_y + i * 800
+                hDC.TextOut(x, y, line)
+
+            hDC.EndPage()
+            hDC.EndDoc()
+
+        finally:
+            # Always clean up the device context
+            hDC.DeleteDC()
+
+        return {"status": "printed"}
+
+    except Exception as e:
+        # Catch any unexpected errors
+        return {"status": "error", "message": str(e)}, 500
 
 
-app.run(host="127.0.0.1", port=5000)
+if __name__ == "__main__":
+    # Run with Waitress instead of Flask dev server
+    serve(app, host="127.0.0.1", port=5000)
