@@ -22,6 +22,16 @@ CORS(app)  # allow all origins, including your website
 
 #     return {"status": "ok"}
 
+@app.get("/printer-status")
+def printer_status():
+    try:
+        printer_name = win32print.GetDefaultPrinter()
+        hPrinter = win32print.OpenPrinter(printer_name)
+        win32print.ClosePrinter(hPrinter)
+        return {"status": "online"}
+    except:
+        return {"status": "offline"}, 503
+
 
 @app.post("/print")
 def print_ticket():
